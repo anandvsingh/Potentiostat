@@ -474,7 +474,7 @@ int16_t CV_test (char* name, int16_t slope, int16_t start, int16_t stop, int16_t
 
 
  //if(up)
-  current_DAC = zero_DAC;
+  current_DAC = max_DAC;
  //else
   //current_DAC = max_DAC;
 
@@ -508,7 +508,7 @@ while(1)
  TIMER.CNT = 0;
 
 
- if(up)
+ /*if(up)
   current_DAC++;
  else
   current_DAC--;
@@ -530,6 +530,12 @@ while(1)
    //break;
  }
 else if(up && current_DAC >= zero_DAC && flag==1)
+{
+  break;
+}
+*/
+
+if (i==1000)
 {
   break;
 }
