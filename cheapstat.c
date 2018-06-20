@@ -54,7 +54,8 @@
 #include <avr/eeprom.h>
 #include <avr/interrupt.h>
 #include "spi_driver.h"
-float StDev;
+float StDev,mean,HiVal;
+int n;
 
 typedef struct {
  char name[15];
@@ -205,13 +206,13 @@ int main()
 
  strcpy(profiles[1].name,"CV #1          ");
  profiles[1].type = CV;
- profiles[1].op1 = 400;
- profiles[1].op2 = 0;
- profiles[1].op3 = 1000;
- profiles[1].op4 = 1;
- profiles[1].op5 = 4;
+ profiles[1].op1 = 280;
+ profiles[1].op2 = -700;
+ profiles[1].op3 = 700;
+ profiles[1].op4 = 2;
+ profiles[1].op5 = 7;
  profiles[1].op6 = 0;
- profiles[1].curr_range = RANGE_10UA;
+ profiles[1].curr_range = RANGE_50UA;
 
  for(i = 0; i < PROFILES_LENGTH; i++) //change to 1
   eeprom_write_block((const void*)&(profiles[i]), (void*)&(profilesEE[i]), sizeof(profile));
@@ -230,8 +231,10 @@ int main()
       lcdPrintData("~",1);
 
 
-     lcdPrintData(profiles[1].name, 15);
-
+     //lcdPrintData(profiles[1].name, 15);
+     lcdPrintData("Right press to",14);
+     lcdGotoXY(0,1);
+     lcdPrintData("start CV",8); 
    while(buttonHandler(profiles,&status,&profile_index,&profile_opt_index,&profile_edit_index,&profile_edit_sel,&length)!=1) {}
   }
 
@@ -240,8 +243,19 @@ int main()
    lcdClear();
    lcdHome();
    lcdPrintData("StDev = ",8);
-   sprintf(Resultstr,"%4d",StDev);
-   lcdPrintData(Resultstr,4);
+   StDev = (int) StDev;
+   sprintf(Resultstr,"%8d",StDev);
+   lcdPrintData(Resultstr,8);
+   lcdGotoXY(0,1);
+   mean = (int) mean;
+   lcdPrintData("Mean = ",7);
+   sprintf(Resultstr,"%8d",mean);
+   lcdPrintData(Resultstr,8);
+   lcdGotoXY(0,2);
+   HiVal = (int) HiVal;
+   lcdPrintData("Max = ",6);
+   sprintf(Resultstr,"%8d",HiVal);
+   lcdPrintData(Resultstr,8);
    while(buttonHandler(profiles,&status,&profile_index,&profile_opt_index,&profile_edit_index,&profile_edit_sel,&length)!=1) {}
 
   }
@@ -252,15 +266,15 @@ int main()
    lcdHome();
 
 
-   lcdPrintData(profiles[profile_index].name, 15);
+   //lcdPrintData(profiles[profile_index].name, 15);
 
 
-   lcdGotoXY(0,1);
+   /*lcdGotoXY(0,1);
    if(profile_opt_index == OPT_START)
     lcdPrintData("~",1);
    else
-    lcdPrintData(" ",1);
-   lcdPrintData("start",5);
+    */lcdPrintData("~",1);
+   lcdPrintData("Start test",10);
 
    while(buttonHandler(profiles,&status,&profile_index,&profile_opt_index,&profile_edit_index,&profile_edit_sel,&length)!=1) {}
   }
@@ -272,10 +286,10 @@ int main()
    lcdHome();
 
 
-   lcdPrintData(profiles[profile_index].name, 15);
+   //lcdPrintData(profiles[profile_index].name, 15);
 
-   lcdGotoXY(0,1);
-   lcdPrintData(" testing...",10);
+   //lcdGotoXY(0,1);
+   lcdPrintData("Testing....",10);
 
 
 
@@ -299,12 +313,15 @@ int main()
    lcdHome();
 
 
-   lcdPrintData(profiles[profile_index].name, 15);
+   //lcdPrintData(profiles[profile_index].name, 15);
 
 
-   lcdGotoXY(0,1);
+   //lcdGotoXY(0,1);
    lcdPrintData("Test Complete",13);
-
+   lcdGotoXY(0,1);
+   lcdPrintData("Press right to",14);
+   lcdGotoXY(0,2);
+   lcdPrintData("view results",12); 
 
 
    while(buttonHandler(profiles,&status,&profile_index,&profile_opt_index,&profile_edit_index,&profile_edit_sel,&length)!=1) {}
@@ -361,7 +378,7 @@ int buttonHandler(profile profiles[PROFILES_LENGTH], uint8_t* status, uint8_t* p
  }
  else if(*status == DISPLAY_RESULTS)
  {
-  if (dir==RIGHT)
+  if (dir==LEFT)
    *status = PROFILE_SEL;
  }
  else if(*status == PROFILE_OPT)
@@ -411,12 +428,12 @@ int16_t CV_test (char* name, int16_t slope, int16_t start, int16_t stop, int16_t
  uint16_t ramps;
  uint16_t samples;
  uint16_t i,j,k;
- int sum = 0,n,l,flag=0;
- float mean,st,st2,st3;
+ int sum = 0,l;
+ float st,st2,st3;
  unsigned long variance;
  bool up;
 
- int16_t current_DAC, min_DAC, max_DAC, zero_DAC;
+ int16_t current_DAC, min_DAC, max_DAC;
 
 
  int16_t current[CV_MAX_DATAPOINTS];
@@ -432,19 +449,18 @@ int16_t CV_test (char* name, int16_t slope, int16_t start, int16_t stop, int16_t
  }
 
 
- //if((stop-start)>0)
+ if((stop-start)>0)
  {
   up=true;
-  zero_DAC = (int16_t) (round(start*(4096.0/3300))+2048);
+  min_DAC = (int16_t) (round(start*(4096.0/3300))+2048);
   max_DAC = (int16_t) (round(stop*(4096.0/3300))+2048);
-  min_DAC = (int16_t) (round(-1000*(4096.0/3300))+2048);
  }
- /*else
+ else
  {
   up=false;
   max_DAC = (int16_t) (round(start*(4096.0/3300))+2048);
   min_DAC = (int16_t) (round(stop*(4096.0/3300))+2048);
- }*/
+ }
 
  ramps = 2*scans;
 
@@ -473,9 +489,9 @@ int16_t CV_test (char* name, int16_t slope, int16_t start, int16_t stop, int16_t
  }
 
 
- //if(up)
-  //current_DAC = zero_DAC;
- //else
+ if(up)
+  current_DAC = min_DAC;
+ else
   current_DAC = max_DAC;
 
  i = 0;
@@ -507,7 +523,7 @@ while(1)
   DAC_Channel_Write(&DACB,current_DAC,CH0);
  TIMER.CNT = 0;
 
-/*
+
  if(up)
   current_DAC++;
  else
@@ -518,27 +534,17 @@ while(1)
  {
   up = false;
   ramps--;
-  //if(ramps==0)
-   //break;
-  flag=1;
+  if(ramps==0)
+   break;
  }
  else if(!up && current_DAC <= min_DAC)
  {
   up = true;
   ramps--;
-  //if(ramps==0)
-   //break;
+  if(ramps==0)
+   break;
  }
-else if(up && current_DAC >= zero_DAC && flag==1)
-{
-  break;
-}*/
 
-
-if (i==1000)
-{
-  break;
-}
  current[i] = 0;
 
  while(TIMER.CNT<step_time) {
@@ -555,7 +561,7 @@ if (i==1000)
  if(steps_taken >= steps_per_sample)
  {
   {
-   sum+=current[i];
+   
    n=i;
   }
   steps_taken = 0;
@@ -563,14 +569,23 @@ if (i==1000)
 
  }
 }
-mean = sum/n;
-for (l=0;l<=n;l++)
+HiVal = current[n/2];
+for (l=n/2;l<=n;l++)
+{
+  sum +=current[l];
+  if (HiVal<current[l])
+    HiVal = current[l];
+}
+mean = sum/(n/2);
+
+
+for (l=n/2;l<=n;l++)
 {
  st = mean-current[l];
  st2 = st*st;
  st3+=st2;
 }
-variance = st3/n;
+variance = st3/(n/2);
 StDev = sqrt(variance);
 
 
