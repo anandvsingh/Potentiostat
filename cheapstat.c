@@ -1,23 +1,29 @@
-#define TIMER TCC0
+/*This is the main file that controls the Potentiostat
+  This file can be used to control various parameters of the device, how to change behaviour of a 
+  particular property will be mentioned alongside the variable for better understanding.
 
-#define DAC_CONINTVAL DAC_CONINTVAL_1CLK_gc
+*/
+//need libm.a
+#define TIMER TCC0 //timer to use
+
+#define DAC_CONINTVAL DAC_CONINTVAL_1CLK_gc //DAC settings
 #define DAC_REFRESH DAC_REFRESH_16CLK_gc
-#define ADC_PRESCALER ADC_PRESCALER_DIV8_gc
+#define ADC_PRESCALER ADC_PRESCALER_DIV8_gc//ADC sampling speed
 #define ADC_OFFSET 0
 
-#define EEPROM_SIZE 1024
-#define PROFILES_LENGTH 11
+#define EEPROM_SIZE 1024 //in bytes
+#define PROFILES_LENGTH 11 //max number of profiles, limited by memory, we only use 1 for cyclic voltamtery
 
 
 
-#define CV_BUFFER_SIZE 16
-#define CV_MAX_DATAPOINTS 1500
+#define CV_BUFFER_SIZE 16 //must be <=16, memory limit
+#define CV_MAX_DATAPOINTS 1500 //DO NOT CHANGE
 
-#define CV 1
-
-
+#define CV 1 //Kept CV as 1 to not cause disagreement with USART operations
 
 
+
+//Defining various modes of operation of the system
 
 #define PROFILE_SEL 0
 #define PROFILE_OPT 1
@@ -32,7 +38,7 @@
 
 #define RANGE_10UA 1
 #define RANGE_50UA 2
-
+// Numbers are already fixed by the button hardware, named them for ease of code visibility
 #define UP 0
 #define LEFT 1
 #define RIGHT 2
@@ -57,10 +63,12 @@
 float StDev,mean,HiVal;
 int n;
 
+
+//Defining a profile strucutre (29 bytes), tasks of each profile variable are defined below
 typedef struct {
  char name[15];
  uint8_t type;
- int16_t op1;
+ int16_t op1; 
  int16_t op2;
  int16_t op3;
  int16_t op4;
@@ -69,7 +77,7 @@ typedef struct {
  uint8_t curr_range;
 } profile;
 
-
+//profiles are located in both EEPROM and RAM
 profile EEMEM profilesEE[PROFILES_LENGTH];
 profile profiles[PROFILES_LENGTH];
 
@@ -98,7 +106,9 @@ int main()
  int16_t length;
 
 
-
+	//4 DIR SWITCH 
+	/////////////////////////////////
+	//setup pins as input
 
 
  PORTA.DIRCLR = PIN4_bm;
@@ -110,48 +120,49 @@ int main()
  PORTA.DIRCLR = PIN7_bm;
  PORTA.PIN7CTRL = PORT_OPC_PULLDOWN_gc;
 
+	//PORTE.INT0MASK = 0;
+	/////////////////////////////////
+
+
+	//SPST SWITCHES
+	/////////////////////////////////
+    //setup pins as output
+ PORTE.DIRSET = PIN1_bm; //switch0
+ PORTE.DIRSET = PIN0_bm; //switch1
+ PORTE.DIRSET = PIN2_bm; //switch2
+ PORTE.DIRSET = PIN3_bm; //switch3
+
+//set initital switch positions
+
+ PORTE.OUTCLR = PIN1_bm; //switch0
+ PORTE.OUTSET = PIN0_bm; //switch1
+ PORTE.OUTCLR = PIN2_bm; //switch2
+ PORTE.OUTCLR = PIN3_bm; //switch3
 
 
 
 
-
-
- PORTE.DIRSET = PIN1_bm;
- PORTE.DIRSET = PIN0_bm;
- PORTE.DIRSET = PIN2_bm;
- PORTE.DIRSET = PIN3_bm;
-
-
- PORTE.OUTCLR = PIN1_bm;
- PORTE.OUTSET = PIN0_bm;
- PORTE.OUTCLR = PIN2_bm;
- PORTE.OUTCLR = PIN3_bm;
-
-
-
-
-
+//DAC
  DAC_DualChannel_Enable( &DACB,DAC_REFSEL_AVCC_gc,false,DAC_CONINTVAL,DAC_REFRESH);
-
+//1.65V reference
  while (DAC_Channel_DataEmpty(&DACB, CH1) == false) {}
   DAC_Channel_Write(&DACB,2048,CH1);
-
+//intitial
  while (DAC_Channel_DataEmpty(&DACB, CH0) == false) {}
   DAC_Channel_Write(&DACB,2048,CH0);
 
-
-
-
-
+	//USART
+	/////////////////////////////////
+	//TX as output
  PORTC.DIRSET = PIN3_bm;
-
+//RX as input
  PORTC.DIRCLR = PIN2_bm;
  USART_InterruptDriver_Initialize(&USART_data, &USARTC0, USART_DREINTLVL_LO_gc);
-
+// USARTD0, 8 Data bits, No Parity, 1 Stop bit.
  USART_Format_Set(&USARTC0, USART_CHSIZE_8BIT_gc, USART_PMODE_DISABLED_gc, false);
-
+//enable interrupts
  USART_RxdInterruptLevel_Set(&USARTC0, USART_RXCINTLVL_LO_gc);
-
+//BUAD RATE to 9600
  USART_Baudrate_Set(&USARTC0, 12 , 0);
  USART_Rx_Enable(&USARTC0);
  USART_Tx_Enable(&USARTC0);
@@ -159,21 +170,23 @@ int main()
 
 
 
-
+//ADC
+	/////////////////////////////////
+	// Move stored calibration values to ADC A. 
  ADC_CalibrationValues_Load(&ADCA);
-
+// Set up ADC A to have signed conversion mode and 12 bit resolution.
    ADC_ConvMode_and_Resolution_Config(&ADCA, ADC_ConvMode_Signed, ADC_RESOLUTION_12BIT_gc);
-
+// Set sample rate.
  ADC_Prescaler_Config(&ADCA, ADC_PRESCALER);
-
+	// Set reference voltage on ADC A to be VCC internal
  ADC_Reference_Config(&ADCA, ADC_REFSEL_VCC_gc);
-
+//configure input mode to differential
  ADC_Ch_InputMode_and_Gain_Config(&ADCA.CH0,ADC_CH_INPUTMODE_DIFF_gc,ADC_DRIVER_CH_GAIN_NONE);
  ADC_Ch_InputMode_and_Gain_Config(&ADCA.CH1,ADC_CH_INPUTMODE_DIFF_gc,ADC_DRIVER_CH_GAIN_NONE);
-
+//configure pins
  ADC_Ch_InputMux_Config(&ADCA.CH0, ADC_CH_MUXPOS_PIN0_gc, ADC_CH_MUXNEG_PIN1_gc);
  ADC_Ch_InputMux_Config(&ADCA.CH1, ADC_CH_MUXPOS_PIN2_gc, ADC_CH_MUXNEG_PIN1_gc);
-
+//enable adc
  ADC_Enable(&ADCA);
  lcdInit();
  lcdInit();
@@ -182,9 +195,10 @@ int main()
  lcdPrintData("CDAC Kolkata",12);
  _delay_ms(1000);
 
-
-
-
+/////////////////////////////////
+	
+	//USER INTERFACE
+	/////////////////////////////////
  status = PROFILE_SEL;
  profile_index = 1;
  profile_opt_index = OPT_START;
@@ -194,57 +208,57 @@ int main()
 
 
 
-
- for(i = 0; i < PROFILES_LENGTH; i++) //Change to 1
+//copy profile from EEPROM to SRAM
+ for(i = 0; i < PROFILES_LENGTH; i++)
   eeprom_read_block((void*)&(profiles[i]), (const void*)&(profilesEE[i]), sizeof(profile));
 
 
 
-
+//INTERRUPTS
  PMIC.CTRL |= PMIC_LOLVLEX_bm;
  sei();
+//END INITIALIZATION
 
+//Creating profile on EEPROM
  strcpy(profiles[1].name,"CV #1          ");
  profiles[1].type = CV;
- profiles[1].op1 = 280;
- profiles[1].op2 = -700;
- profiles[1].op3 = 700;
- profiles[1].op4 = 2;
- profiles[1].op5 = 7;
- profiles[1].op6 = 0;
+ profiles[1].op1 = 280; //Slope
+ profiles[1].op2 = -700; //Initial value for starting Voltametry
+ profiles[1].op3 = 700; //Highest Potential peak that the Voltametry achieves
+ profiles[1].op4 = 2; //No of Scans (DO NOT DISTURB UNTIL ABSOLUTELY NECESSARY)
+ profiles[1].op5 = 7; //Mv/Samples, this is used to control Data points
+ profiles[1].op6 = 0;//This option is disabled for cyclic voltametry however is a part of predefined structure hence left untouched
  profiles[1].curr_range = RANGE_50UA;
 
- for(i = 0; i < PROFILES_LENGTH; i++) //change to 1
+ for(i = 0; i < PROFILES_LENGTH; i++) 
   eeprom_write_block((const void*)&(profiles[i]), (void*)&(profilesEE[i]), sizeof(profile));
 
 
-
+//MAIN LOOP
  while(1)
  {
-
-  if(status == PROFILE_SEL)
+   //for selecting profiles
+  if(status == PROFILE_SEL) 
   {
-
+   //clear display
    lcdClear();
    lcdHome();
-
-      lcdPrintData("~",1);
-
-
-     //lcdPrintData(profiles[1].name, 15);
+     //lcdGotoXY(Xcord,Ycord) (0,0 at top left cordinates increase downwards and right)
+     lcdPrintData("~",1);
      lcdPrintData("Right press to",14);
      lcdGotoXY(0,1);
      lcdPrintData("start CV",8); 
    while(buttonHandler(profiles,&status,&profile_index,&profile_opt_index,&profile_edit_index,&profile_edit_sel,&length)!=1) {}
   }
-
+  //Result display window
   else if(status == DISPLAY_RESULTS)
   {
+   //clear LCD
    lcdClear();
-   lcdHome();
+   lcdHome(); //Equivalent to lcdGotoXY(0,0)
    lcdPrintData("StDev = ",8);
-   StDev = (int) StDev;
-   sprintf(Resultstr,"%8d",StDev);
+   StDev = (int) StDev; //Because Sprintf can only handle integers so typecasting is done
+   sprintf(Resultstr,"%8d",StDev); //Because lcdPrintData can only handle strings, value is stored in string
    lcdPrintData(Resultstr,8);
    lcdGotoXY(0,1);
    mean = (int) mean;
@@ -261,41 +275,24 @@ int main()
   }
   else if(status == PROFILE_OPT)
   {
-
+  //Shows the start option and waits for instruction
+  //clear display
    lcdClear();
    lcdHome();
-
-
-   //lcdPrintData(profiles[profile_index].name, 15);
-
-
-   /*lcdGotoXY(0,1);
-   if(profile_opt_index == OPT_START)
-    lcdPrintData("~",1);
-   else
-    */lcdPrintData("~",1);
+   lcdPrintData("~",1);
    lcdPrintData("Start test",10);
 
    while(buttonHandler(profiles,&status,&profile_index,&profile_opt_index,&profile_edit_index,&profile_edit_sel,&length)!=1) {}
   }
-
+  //display while test is going on in the background
   else if(status == PROFILE_TEST)
   {
 
    lcdClear();
    lcdHome();
 
-
-   //lcdPrintData(profiles[profile_index].name, 15);
-
-   //lcdGotoXY(0,1);
    lcdPrintData("Testing....",10);
-
-
-
-
-
-      length = CV_test(profiles[profile_index].name, profiles[profile_index].op1, profiles[profile_index].op2, profiles[profile_index].op3, profiles[profile_index].op4, profiles[profile_index].op5, profiles[profile_index].curr_range);
+   length = CV_test(profiles[profile_index].name, profiles[profile_index].op1, profiles[profile_index].op2, profiles[profile_index].op3, profiles[profile_index].op4, profiles[profile_index].op5, profiles[profile_index].curr_range);
 
    if(length == -1)
    {
@@ -305,18 +302,12 @@ int main()
    else
     status = PROFILE_RESULTS;
   }
-
+  //display to signify that the test is complete
   else if (status == PROFILE_RESULTS)
   {
 
    lcdClear();
    lcdHome();
-
-
-   //lcdPrintData(profiles[profile_index].name, 15);
-
-
-   //lcdGotoXY(0,1);
    lcdPrintData("Test Complete",13);
    lcdGotoXY(0,1);
    lcdPrintData("Press right to",14);
@@ -333,7 +324,9 @@ int main()
 
 
 }
+//end of LCD Display and main
 
+//USART interface function (DO NOT DISTURB)
 void send_string(char* string)
 {
  uint8_t i = 0;
@@ -353,7 +346,7 @@ int buttonHandler(profile profiles[PROFILES_LENGTH], uint8_t* status, uint8_t* p
  dir = INVALID;
  while(dir == INVALID)
  {
-
+//get action i.e. investigate which direction button is pressed, mapped in the begining
  if(bit_is_set(PORTA.IN,4))
   dir = RIGHT;
  else if(bit_is_set(PORTA.IN,5))
@@ -366,7 +359,7 @@ int buttonHandler(profile profiles[PROFILES_LENGTH], uint8_t* status, uint8_t* p
 
 
 
-
+//Changes state of the device based on the present state and button pressed
  if(*status == PROFILE_SEL)
  {
 
@@ -435,11 +428,11 @@ int16_t CV_test (char* name, int16_t slope, int16_t start, int16_t stop, int16_t
 
  int16_t current_DAC, min_DAC, max_DAC;
 
-
+//storing ADC results
  int16_t current[CV_MAX_DATAPOINTS];
  int16_t result_buffer[CV_BUFFER_SIZE];
 
-
+	//check limits
  if(start<-1600 || start>1600 || stop<-1600 || stop>1600 || slope>9000 || slope<10 || sample_rate<1 || sample_rate>1600)
  {
   lcdClear();
@@ -448,7 +441,8 @@ int16_t CV_test (char* name, int16_t slope, int16_t start, int16_t stop, int16_t
   return -1;
  }
 
-
+//determine starting direction and calculate 
+//can change based on start and stop values
  if((stop-start)>0)
  {
   up=true;
@@ -458,16 +452,16 @@ int16_t CV_test (char* name, int16_t slope, int16_t start, int16_t stop, int16_t
  else
  {
   up=false;
-  max_DAC = (int16_t) (round(start*(4096.0/3300))+2048);
-  min_DAC = (int16_t) (round(stop*(4096.0/3300))+2048);
+  max_DAC = (int16_t) (round(start*(4096.0/3300))+2048); //Define the amount of current required to achieve required voltage
+  min_DAC = (int16_t) (round(stop*(4096.0/3300))+2048);  //Define the amount of current required to achieve required voltage
  }
-
+ //ramps is used to decide when it has performed reqiured number of sweeps and break the loop to end testing
  ramps = 2*scans;
 
  steps_per_sample = (uint16_t) (round(sample_rate*(4096.0/3300)));
 
  samples = 2*scans*((max_DAC-min_DAC)/steps_per_sample);
-
+//Check if it is possible to compute based on supplied parameters
  if(samples > CV_MAX_DATAPOINTS)
  {
   lcdClear();
@@ -476,7 +470,7 @@ int16_t CV_test (char* name, int16_t slope, int16_t start, int16_t stop, int16_t
   return -1;
  }
 
-
+//2,000,000 [cycles/sec] * 1/slope [sec/mV] * 3300/4096 [mv/index]
  if(slope > 30)
  {
   step_time = (uint16_t) (round(2000000*(1.0/slope)*(3300.0/4096)));
@@ -488,7 +482,7 @@ int16_t CV_test (char* name, int16_t slope, int16_t start, int16_t stop, int16_t
   TIMER.CTRLA = TC_CLKSEL_DIV4_gc;
  }
 
-
+//Define the current value to begin
  if(up)
   current_DAC = min_DAC;
  else
@@ -502,15 +496,15 @@ int16_t CV_test (char* name, int16_t slope, int16_t start, int16_t stop, int16_t
  for(k = 0; k < CV_BUFFER_SIZE; k++)
   result_buffer[k] = 0;
 
-
- PORTE.OUTSET = PIN1_bm;
- PORTE.OUTSET = PIN2_bm;
+//change switches
+ PORTE.OUTSET = PIN1_bm;  //switch0
+ PORTE.OUTSET = PIN2_bm;  //switch2
  if(curr_range == RANGE_10UA)
-  PORTE.OUTCLR = PIN3_bm;
+  PORTE.OUTCLR = PIN3_bm;  //switch3
  else
-  PORTE.OUTSET = PIN3_bm;
-
- PORTE.OUTCLR = PIN0_bm;
+  PORTE.OUTSET = PIN3_bm;  //switch3
+//_delay_ms(50);
+ PORTE.OUTCLR = PIN0_bm; //switch1
 
  while (DAC_Channel_DataEmpty(&DACB, CH0) == false) {}
   DAC_Channel_Write(&DACB,current_DAC,CH0);
@@ -518,35 +512,35 @@ int16_t CV_test (char* name, int16_t slope, int16_t start, int16_t stop, int16_t
 
 while(1)
 {
-
+ //set DAC and trigger timer
  while (DAC_Channel_DataEmpty(&DACB, CH0) == false) {}
   DAC_Channel_Write(&DACB,current_DAC,CH0);
  TIMER.CNT = 0;
 
-
+//calculate next DAC value
  if(up)
   current_DAC++;
  else
   current_DAC--;
 
-
+//decision making
  if(up && current_DAC >= max_DAC)
  {
-  up = false;
+  up = false; //switch to going down
   ramps--;
-  if(ramps==0)
+  if(ramps==0) //See if reached number of required sweeps
    break;
  }
  else if(!up && current_DAC <= min_DAC)
  {
-  up = true;
+  up = true;  //switch to going up
   ramps--;
-  if(ramps==0)
+  if(ramps==0) //See if reached number of required sweeps
    break;
  }
 
  current[i] = 0;
-
+//ADC measurements
  while(TIMER.CNT<step_time) {
   ADC_Ch_Conversion_Start(&ADCA.CH1);
   while(!ADC_Ch_Conversion_Complete(&ADCA.CH1) && TIMER.CNT<step_time) {}
@@ -588,18 +582,17 @@ for (l=n/2;l<=n;l++)
 variance = st3/(n/2);
 StDev = sqrt(variance);
 
+//Change switches
+ PORTE.OUTSET = PIN0_bm;  //switch1
 
-
- PORTE.OUTSET = PIN0_bm;
-
- PORTE.OUTCLR = PIN1_bm;
- PORTE.OUTCLR = PIN2_bm;
- PORTE.OUTCLR = PIN3_bm;
+ PORTE.OUTCLR = PIN1_bm;  //switch0
+ PORTE.OUTCLR = PIN2_bm;  //switch2
+ PORTE.OUTCLR = PIN3_bm;  //switch3
  current_DAC = 2048;
  while (DAC_Channel_DataEmpty(&DACB, CH0) == false) {}
   DAC_Channel_Write(&DACB,current_DAC,CH0);
 
-
+//start output to USB
  do{} while(!USART_IsTXDataRegisterEmpty(&USARTC0));
  USART_PutChar(&USARTC0, CV);
  for(j = 0; j < 15; j++)
@@ -656,7 +649,7 @@ ISR(USARTC0_RXC_vect)
   type = USART_RXBuffer_GetByte(&USART_data);
  else
   type = 0;
-
+ //recieve profiles
  if(type == 'u')
  {
   for(i = 0; i < PROFILES_LENGTH; i++)
@@ -694,11 +687,11 @@ ISR(USARTC0_RXC_vect)
    profiles[i].op6 |= USART_RXBuffer_GetByte(&USART_data);
    do{USART_RXComplete(&USART_data);} while(!USART_RXBufferData_Available(&USART_data));
    profiles[i].curr_range |= USART_RXBuffer_GetByte(&USART_data);
-
+   //write to EEPROM
    eeprom_write_block((const void*)&(profiles[i]), (void*)&(profilesEE[i]), sizeof(profile));
   }
  }
-
+//send profiles
  else if(type == 'd');
  {
   do{} while(!USART_IsTXDataRegisterEmpty(&USARTC0));
