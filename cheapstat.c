@@ -228,7 +228,7 @@ int main()
  profiles[1].op4 = 2; //No of Scans (DO NOT DISTURB UNTIL ABSOLUTELY NECESSARY)
  profiles[1].op5 = 7; //Mv/Samples, this is used to control Data points
  profiles[1].op6 = 0;//This option is disabled for cyclic voltametry however is a part of predefined structure hence left untouched
- profiles[1].curr_range = RANGE_50UA;
+ profiles[1].curr_range = RANGE_50UA; //Current range, to minimise noise this is the optimal current range
 
  for(i = 0; i < PROFILES_LENGTH; i++) 
   eeprom_write_block((const void*)&(profiles[i]), (void*)&(profilesEE[i]), sizeof(profile));
@@ -261,21 +261,23 @@ int main()
    sprintf(Resultstr,"%8d",StDev); //Because lcdPrintData can only handle strings, value is stored in string
    lcdPrintData(Resultstr,8);
    lcdGotoXY(0,1);
-   mean = (int) mean;
+   mean = (int) mean; //Because Sprintf can only handle integers so typecasting is done
    lcdPrintData("Mean = ",7);
-   sprintf(Resultstr,"%8d",mean);
+   sprintf(Resultstr,"%8d",mean); //Because lcdPrintData can only handle strings, value is stored in string
    lcdPrintData(Resultstr,8);
    lcdGotoXY(0,2);
-   HiVal = (int) HiVal;
+   HiVal = (int) HiVal; //Because Sprintf can only handle integers so typecasting is done
    lcdPrintData("Max = ",6);
-   sprintf(Resultstr,"%8d",HiVal);
+   sprintf(Resultstr,"%8d",HiVal); //Because lcdPrintData can only handle strings, value is stored in string
    lcdPrintData(Resultstr,8);
    while(buttonHandler(profiles,&status,&profile_index,&profile_opt_index,&profile_edit_index,&profile_edit_sel,&length)!=1) {}
 
   }
+
+  //Shows the start option and waits for instruction
   else if(status == PROFILE_OPT)
   {
-  //Shows the start option and waits for instruction
+  
   //clear display
    lcdClear();
    lcdHome();
@@ -555,32 +557,31 @@ while(1)
  if(steps_taken >= steps_per_sample)
  {
   {
-   
-   n=i;
+   n=i;//Here n is used to determine no of recieved current points 
   }
   steps_taken = 0;
   i++;
 
  }
 }
-HiVal = current[n/2];
-for (l=n/2;l<=n;l++)
+HiVal = current[n/2]; //Stores the maximum current value
+for (l=n/2;l<=n;l++) //Everywhere n/2 is used because we discard results obtained in first cycle
 {
-  sum +=current[l];
-  if (HiVal<current[l])
+  sum +=current[l]; //Keeps on incrementing sum by adding value of each current
+  if (HiVal<current[l]) //standard maximum value calculation algorithm
     HiVal = current[l];
 }
-mean = sum/(n/2);
+mean = sum/(n/2); //To calculate mean of the datapoints obtained in the second cycle
 
 
-for (l=n/2;l<=n;l++)
+for (l=n/2;l<=n;l++) //To calculate standard deviation, we first calculate Variance of the second cycle
 {
  st = mean-current[l];
  st2 = st*st;
  st3+=st2;
 }
 variance = st3/(n/2);
-StDev = sqrt(variance);
+StDev = sqrt(variance); //Calculated standard deviation of the response of the second cycle
 
 //Change switches
  PORTE.OUTSET = PIN0_bm;  //switch1
@@ -592,7 +593,7 @@ StDev = sqrt(variance);
  while (DAC_Channel_DataEmpty(&DACB, CH0) == false) {}
   DAC_Channel_Write(&DACB,current_DAC,CH0);
 
-//start output to USB
+//start output to USB to interface with Java program running on windows
  do{} while(!USART_IsTXDataRegisterEmpty(&USARTC0));
  USART_PutChar(&USARTC0, CV);
  for(j = 0; j < 15; j++)
