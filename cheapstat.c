@@ -85,7 +85,31 @@ int buttonHandler(profile profiles[PROFILES_LENGTH], uint8_t* status, uint8_t* p
 
 int16_t CV_test (char* name, int16_t slope, int16_t start, int16_t stop, int16_t scans, int16_t sample_rate, uint8_t curr_range);
 
-
+int itostring(int num, char* Resultstr)
+{
+  int t1,len=0,temp = num,Strl;
+  if (num<0)
+  {
+	  len++;
+	  *Resultstr='-';
+	  num*=-1;
+  }
+  while (temp)
+  {
+    len++;
+    temp/=10;
+  }
+  Strl = len;
+  temp = num;
+  *(Resultstr+len--)='\0';
+  while (temp)
+  {
+    t1=temp%10;
+	temp/=10;
+    *(Resultstr+len--) = t1+48;
+  }
+  return Strl;
+}
 
 
 USART_data_t USART_data;
@@ -93,7 +117,8 @@ USART_data_t USART_data;
 void send_string(char* string);
 int main()
 {
- char Resultstr[12];
+ char Resultstr[18];
+ uint8_t lengthOfString;
  uint8_t status;
  uint8_t profile_index;
  uint8_t profile_opt_index;
@@ -258,18 +283,23 @@ int main()
    lcdHome(); //Equivalent to lcdGotoXY(0,0)
    lcdPrintData("StDev = ",8);
    StDev = (int) StDev; //Because Sprintf can only handle integers so typecasting is done
-   sprintf(Resultstr,"%8d",StDev); //Because lcdPrintData can only handle strings, value is stored in string
-   lcdPrintData(Resultstr,8);
+   //sprintf(Resultstr,"%4d",StDev); //Because lcdPrintData can only handle strings, value is stored in string
+   lengthOfString = itostring (StDev,Resultstr); 
+   lcdPrintData(Resultstr,lengthOfString);
    lcdGotoXY(0,1);
    mean = (int) mean; //Because Sprintf can only handle integers so typecasting is done
    lcdPrintData("Mean = ",7);
-   sprintf(Resultstr,"%8d",mean); //Because lcdPrintData can only handle strings, value is stored in string
-   lcdPrintData(Resultstr,8);
+   //sprintf(Resultstr,"%4d",mean); //Because lcdPrintData can only handle strings, value is stored in string
+   lengthOfString = itostring (mean,Resultstr); 
+   lcdPrintData(Resultstr,lengthOfString);
    lcdGotoXY(0,2);
    HiVal = (int) HiVal; //Because Sprintf can only handle integers so typecasting is done
    lcdPrintData("Max = ",6);
-   sprintf(Resultstr,"%8d",HiVal); //Because lcdPrintData can only handle strings, value is stored in string
-   lcdPrintData(Resultstr,8);
+   //sprintf(Resultstr,"%7d",1010101); //Because lcdPrintData can only handle strings, value is stored in string
+   //sprintf(Resultstr,"%5d",HiVal);
+   lengthOfString = itostring (HiVal,Resultstr); 
+   lcdPrintData(Resultstr,lengthOfString);
+   //lcdPrintData(Resultstr,5);
    while(buttonHandler(profiles,&status,&profile_index,&profile_opt_index,&profile_edit_index,&profile_edit_sel,&length)!=1) {}
 
   }
@@ -427,7 +457,7 @@ int16_t CV_test (char* name, int16_t slope, int16_t start, int16_t stop, int16_t
  float st,st2,st3;
  unsigned long variance;
  bool up;
-
+ long num, decimal_num, remainder, base = 1, binary = 0, no_of_1s = 0;
  int16_t current_DAC, min_DAC, max_DAC;
 
 //storing ADC results
@@ -557,14 +587,14 @@ while(1)
  if(steps_taken >= steps_per_sample)
  {
   {
-   n=i;//Here n is used to determine no of recieved current points 
+  // n=i;//Here n is used to determine no of recieved current points 
   }
   steps_taken = 0;
   i++;
 
  }
 }
-HiVal = current[n/2]; //Stores the maximum current value
+/*HiVal = current[n/2]; //Stores the maximum current value
 for (l=n/2;l<=n;l++) //Everywhere n/2 is used because we discard results obtained in first cycle
 {
   sum +=current[l]; //Keeps on incrementing sum by adding value of each current
@@ -582,7 +612,7 @@ for (l=n/2;l<=n;l++) //To calculate standard deviation, we first calculate Varia
 }
 variance = st3/(n/2);
 StDev = sqrt(variance); //Calculated standard deviation of the response of the second cycle
-
+*/
 //Change switches
  PORTE.OUTSET = PIN0_bm;  //switch1
 
@@ -627,14 +657,33 @@ StDev = sqrt(variance); //Calculated standard deviation of the response of the s
  USART_PutChar(&USARTC0, i>>8);
  do{} while(!USART_IsTXDataRegisterEmpty(&USARTC0));
  USART_PutChar(&USARTC0, i);
-
+HiVal = current[i/2];
  for(j = 0; j < i; j++)
  {
-  do{} while(!USART_IsTXDataRegisterEmpty(&USARTC0));
+  do{} while(!USART_IsTXDataRegisterEmpty(&USARTC0)); //Data is sent as high bit and low bit
   USART_PutChar(&USARTC0, current[j]>>8);
-  do{} while(!USART_IsTXDataRegisterEmpty(&USARTC0));
+  do{} while(!USART_IsTXDataRegisterEmpty(&USARTC0)); //Low bit is sent
   USART_PutChar(&USARTC0, current[j]);
+  if (j>=i/2)
+  {
+    if (HiVal<current[j])
+      HiVal=current[j];
+    sum += current[j];
+  }
  }
+
+ 
+ mean = sum/(i/2); //To calculate mean of the datapoints obtained in the second cycle
+
+
+for (l=i/2;l<=i;l++) //To calculate standard deviation, we first calculate Variance of the second cycle
+{
+ st = mean-current[l];
+ st2 = st*st;
+ st3+=st2;
+}
+variance = st3/(i/2);
+StDev = sqrt(variance); //Calculated standard deviation of the response of the second cycle
 
  do{} while(!USART_IsTXDataRegisterEmpty(&USARTC0));
   USART_PutChar(&USARTC0,CV);
