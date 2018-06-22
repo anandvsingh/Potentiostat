@@ -60,8 +60,10 @@
 #include <avr/eeprom.h>
 #include <avr/interrupt.h>
 #include "spi_driver.h"
-float StDev,mean,HiVal;
+float StDev,mean,HiVal,variance;
 int n;
+ int sum,l;
+ float st,st2,st3;
 
 
 //Defining a profile strucutre (29 bytes), tasks of each profile variable are defined below
@@ -93,6 +95,12 @@ int itostring(int num, char* Resultstr)
 	  len++;
 	  *Resultstr='-';
 	  num*=-1;
+  }
+  if (num==0)
+  {
+    *Resultstr='0';
+    *(Resultstr+1)='\0';
+    return 1;
   }
   while (temp)
   {
@@ -282,6 +290,7 @@ int main()
    lcdClear();
    lcdHome(); //Equivalent to lcdGotoXY(0,0)
    lcdPrintData("StDev = ",8);
+   //StDev = 1587;
    StDev = (int) StDev; //Because Sprintf can only handle integers so typecasting is done
    //sprintf(Resultstr,"%4d",StDev); //Because lcdPrintData can only handle strings, value is stored in string
    lengthOfString = itostring (StDev,Resultstr); 
@@ -299,6 +308,8 @@ int main()
    //sprintf(Resultstr,"%5d",HiVal);
    lengthOfString = itostring (HiVal,Resultstr); 
    lcdPrintData(Resultstr,lengthOfString);
+
+
    //lcdPrintData(Resultstr,5);
    while(buttonHandler(profiles,&status,&profile_index,&profile_opt_index,&profile_edit_index,&profile_edit_sel,&length)!=1) {}
 
@@ -404,7 +415,18 @@ int buttonHandler(profile profiles[PROFILES_LENGTH], uint8_t* status, uint8_t* p
  else if(*status == DISPLAY_RESULTS)
  {
   if (dir==LEFT)
+  {
    *status = PROFILE_SEL;
+   HiVal = 0;
+   StDev = 0;
+   variance = 0;
+   mean = 0;
+   sum = 0;
+   st2=0;
+   st3=0;
+   l=0;
+   st=0;
+  }
  }
  else if(*status == PROFILE_OPT)
  {
@@ -453,11 +475,17 @@ int16_t CV_test (char* name, int16_t slope, int16_t start, int16_t stop, int16_t
  uint16_t ramps;
  uint16_t samples;
  uint16_t i,j,k;
- int sum = 0,l;
- float st,st2,st3;
- unsigned long variance;
+ sum = 0;
+ variance =0;
+ st=0;
+ st2=0;
+ st3=0;
+ StDev = 0;
+ mean = 0;
+ l=0;
+ HiVal = 0;
+
  bool up;
- long num, decimal_num, remainder, base = 1, binary = 0, no_of_1s = 0;
  int16_t current_DAC, min_DAC, max_DAC;
 
 //storing ADC results
@@ -586,33 +614,12 @@ while(1)
  steps_taken++;
  if(steps_taken >= steps_per_sample)
  {
-  {
-  // n=i;//Here n is used to determine no of recieved current points 
-  }
   steps_taken = 0;
   i++;
 
  }
 }
-/*HiVal = current[n/2]; //Stores the maximum current value
-for (l=n/2;l<=n;l++) //Everywhere n/2 is used because we discard results obtained in first cycle
-{
-  sum +=current[l]; //Keeps on incrementing sum by adding value of each current
-  if (HiVal<current[l]) //standard maximum value calculation algorithm
-    HiVal = current[l];
-}
-mean = sum/(n/2); //To calculate mean of the datapoints obtained in the second cycle
 
-
-for (l=n/2;l<=n;l++) //To calculate standard deviation, we first calculate Variance of the second cycle
-{
- st = mean-current[l];
- st2 = st*st;
- st3+=st2;
-}
-variance = st3/(n/2);
-StDev = sqrt(variance); //Calculated standard deviation of the response of the second cycle
-*/
 //Change switches
  PORTE.OUTSET = PIN0_bm;  //switch1
 
@@ -664,25 +671,26 @@ HiVal = current[i/2];
   USART_PutChar(&USARTC0, current[j]>>8);
   do{} while(!USART_IsTXDataRegisterEmpty(&USARTC0)); //Low bit is sent
   USART_PutChar(&USARTC0, current[j]);
-  if (j>=i/2)
+  if (j>=391)
   {
     if (HiVal<current[j])
       HiVal=current[j];
     sum += current[j];
   }
+  //HiVal = i;
  }
 
  
- mean = sum/(i/2); //To calculate mean of the datapoints obtained in the second cycle
+ mean = sum/(381); //To calculate mean of the datapoints obtained in the second cycle
 
 
-for (l=i/2;l<=i;l++) //To calculate standard deviation, we first calculate Variance of the second cycle
+for (l=391;l<=i;l++) //To calculate standard deviation, we first calculate Variance of the second cycle
 {
  st = mean-current[l];
  st2 = st*st;
  st3+=st2;
 }
-variance = st3/(i/2);
+variance = st3/(381);
 StDev = sqrt(variance); //Calculated standard deviation of the response of the second cycle
 
  do{} while(!USART_IsTXDataRegisterEmpty(&USARTC0));
